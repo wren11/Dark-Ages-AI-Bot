@@ -15,6 +15,6 @@ This ain't just a bad idea—it's THE worst idea, mate.
 ## How to (Not) Play Along
 1. **Clone the Repository (But Seriously, Why Would Ya?)**
    ```bash
-   git clone https://github.com/your-repo/dark-ages-ai-pop.git
+   git clone https://github.com/wren11/dark-ages-ai-pop.git
    cd dark-ages-ai-pop
 
