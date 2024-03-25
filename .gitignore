@@ -1,0 +1,64 @@
+# Standard exclusions for C++/Visual Studio projects
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.idb
+*.suo
+*.sdf
+*.opensdf
+*.tlog
+*.log
+Debug/
+Release/
+x64/
+x86/
+ipch/
+*.user
+*.userosscache
+*.aps
+*.pch
+*.vspscc
+*_i.c
+*_p.c
+*.ncb
+*.tlb
+*.tlh
+*.bak
+*.cache
+*.ilk
+*.log
+*.lib
+*.sbr
+*.scc
+[Bb]in
+[Oo]bj
+[Ll]og
+[Dd]ebug*/
+[Rr]elease*/
+_ReSharper*/
+[Tt]est[Rr]esult*
+
+# Exclude Visual Studio code analysis files
+*.VC.db
+*.VC.VC.opendb
+
+# Exclude JetBrains Rider project settings
+.idea/
+
+.vs
+.cursorignore
+.git
+
+# Exclude Visual Studio settings and cache files
+.vs/
+*.vcxproj.user
+*.vcxproj.filters
+
+# Exclude other files and directories as per project specifics
+*.filters
+
+vcpkg_installed
+vcpkg_installed/
+vcpkg_installed/**
