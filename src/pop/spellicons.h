@@ -58,14 +58,14 @@ public:
     {
         if (color > 0)
         {
-            SpellIcon spellIcon = static_cast<SpellIcon>(icon);
+	        auto spellIcon = static_cast<SpellIcon>(icon);
             messages[spellIcon] = "Has received spell Icon: " + std::to_string(icon);
         }
     }
 
     void RemoveSpellIcon(unsigned short icon)
     {
-        SpellIcon spellIcon = static_cast<SpellIcon>(icon);
+	    auto spellIcon = static_cast<SpellIcon>(icon);
         messages.erase(spellIcon);
     }
 

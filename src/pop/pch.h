@@ -1,39 +1,33 @@
 #ifndef PCH_H
 #define PCH_H
-#include "framework.h"
-#include <thread>
-#include <iostream>
-#include <iomanip>
-#include <io.h>
-#include <fcntl.h>
-#include <mutex>
-#include <queue>
-#include <vector>
-#include <algorithm>
-#include <optional>
-#include <unordered_map>
+
+// Windows headers
+#include <windows.h>
+
+// Standard library
 #include <string>
-#include <condition_variable>
-#include <functional>
+#include <vector>
 #include <memory>
-#include <chrono>
-#include <utility>
-#include <dwrite.h>
-#include <fstream>
-#include <stack>
+#include <algorithm>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <queue>
 #include <map>
-#include <shlobj.h>
-#include <tchar.h>
+#include <unordered_map>
+#include <chrono>
 #include <filesystem>
-#include <shared_mutex>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
+// Utility
+#include <optional>
 #include <type_traits>
-#include <cstring> 
-#include <CommDlg.h> 
 
+// Remove Lua dependency unless absolutely needed
+// extern "C" {
+// #include "lua.hpp"
+// }
 
-extern "C" {
-#include "lua.hpp"
-}
-
-#endif
-
+#endif // PCH_H

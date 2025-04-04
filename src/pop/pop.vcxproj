@@ -80,13 +80,15 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <SDLCheck>true</SDLCheck>
+      <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;POP_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>.\detours;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>detours;.\;.\utils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <ExceptionHandling>Sync</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -103,13 +105,14 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;POP_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>Default</ConformanceMode>
+      <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>.\detours;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <ExceptionHandling>false</ExceptionHandling>
-      <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>detours;.\;.\utils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <ExceptionHandling>Async</ExceptionHandling>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -129,9 +132,10 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>detours;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>detours;.\;.\utils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <ExceptionHandling>Sync</ExceptionHandling>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -150,6 +154,8 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <AdditionalIncludeDirectories>detours;.\;.\utils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -160,61 +166,84 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="gamestate_manager.h" />
-    <ClInclude Include="animations.h" />
-    <ClInclude Include="datafile.h" />
-    <ClInclude Include="game_observers.h" />
-    <ClInclude Include="hostile_players.h" />
-    <ClInclude Include="inventory_manager.h" />
-    <ClInclude Include="io.h" />
+    <ClInclude Include="data_manager.h" />
     <ClInclude Include="item.h" />
-    <ClInclude Include="packet_processor.h" />
-    <ClInclude Include="packet_registry.h" />
-    <ClInclude Include="overlay_manager.h" />
-    <ClInclude Include="packet_writer.h" />
-    <ClInclude Include="script_manager.h" />
     <ClInclude Include="spell.h" />
-    <ClInclude Include="spell_manager.h" />
     <ClInclude Include="spelldata.h" />
-    <ClInclude Include="spelleffect.h" />
     <ClInclude Include="spellicons.h" />
     <ClInclude Include="sprite.h" />
     <ClInclude Include="statistics.h" />
-    <ClInclude Include="network_functions.h" />
     <ClInclude Include="constants.h" />
-    <ClInclude Include="network_communicator.h" />
     <ClInclude Include="data_templates.h" />
     <ClInclude Include="framework.h" />
-    <ClInclude Include="object_manager.h" />
-    <ClInclude Include="packet_handler.h" />
-    <ClInclude Include="packet_reader.h" />
-    <ClInclude Include="packet_structures.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="intercept_manager.h" />
     <ClInclude Include="player.h" />
     <ClInclude Include="structures.h" />
-    <ClInclude Include="ui_manager.h" />
-    <ClInclude Include="worker.h" />
+    <!-- Core project files -->
+    <ClInclude Include="initialization.h" />
+    <!-- Network module -->
+    <ClInclude Include="network\packet.h" />
+    <ClInclude Include="network\packet_handler.h" />
+    <ClInclude Include="network\packet_handler_registry.h" />
+    <ClInclude Include="network\packet_reader.h" />
+    <ClInclude Include="network\packet_writer.h" />
+    <ClInclude Include="network\packet_handlers\base_packet_handler.h" />
+    <ClInclude Include="network\packet_handlers\chat_message_handler.h" />
+    <ClInclude Include="network\packet_handlers\lambda_packet_handler.h" />
+    <ClInclude Include="network\packet_handlers\player_info_handler.h" />
+    <!-- Game module -->
+    <ClInclude Include="game\network_interface.h" />
+    <ClInclude Include="game\sprite.h" />
+    <ClInclude Include="game\sprite_manager.h" />
+    <ClInclude Include="game\data_loader.h" />
+    <ClInclude Include="game\entity.h" />
+    <ClInclude Include="game\game_data_manager.h" />
+    <ClInclude Include="game\player.h" />
+    <ClInclude Include="game\position.h" />
+    <!-- Utils module -->
+    <ClInclude Include="utils\config\config_manager.h" />
+    <ClInclude Include="utils\memory\memory_scanner.h" />
+    <ClInclude Include="utils\input_handler.h" />
+    <ClInclude Include="utils\logging.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="overlay_manager.cpp" />
-    <ClCompile Include="script_manager.cpp" />
-    <ClCompile Include="send.cpp" />
-    <ClCompile Include="gamestate_manager.cpp" />
+    <ClCompile Include="data_manager.cpp" />
     <ClCompile Include="handle_registry.cpp" />
-    <ClCompile Include="send_handlers.cpp" />
+    <ClCompile Include="intercept_manager.cpp" />
     <ClCompile Include="pch.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="intercept_manager.cpp" />
-    <ClCompile Include="recv_handlers.cpp" />
-    <ClCompile Include="spell_manager.cpp" />
     <ClCompile Include="spelldata.cpp" />
-    <ClCompile Include="x33_player_handler.cpp" />
+    <ClCompile Include="dll_main.cpp" />
+    <!-- Network module -->
+    <ClCompile Include="network\packet.cpp" />
+    <ClCompile Include="network\packet_handler_registry.cpp" />
+    <ClCompile Include="network\packet_reader.cpp" />
+    <ClCompile Include="network\packet_writer.cpp" />
+    <ClCompile Include="network\packet_handlers\base_packet_handler.cpp" />
+    <ClCompile Include="network\packet_handlers\chat_message_handler.cpp" />
+    <ClCompile Include="network\packet_handlers\player_info_handler.cpp" />
+    <!-- Game module -->
+    <ClCompile Include="game\network_interface.cpp" />
+    <ClCompile Include="game\sprite.cpp" />
+    <ClCompile Include="game\sprite_manager.cpp" />
+    <ClCompile Include="game\data_loader.cpp" />
+    <ClCompile Include="game\entity.cpp" />
+    <ClCompile Include="game\game_data_manager.cpp" />
+    <ClCompile Include="game\player.cpp" />
+    <ClCompile Include="game\position.cpp" />
+    <!-- Utils module -->
+    <ClCompile Include="utils\config\config_manager.cpp" />
+    <ClCompile Include="utils\memory\memory_scanner.cpp" />
+    <ClCompile Include="utils\input_handler.cpp" />
+    <ClCompile Include="utils\logging.cpp" />
+    <ClCompile Include="utils\memory\pattern.cpp" />
+    <ClCompile Include="utils\thread_pool.cpp" />
+    <ClCompile Include="utils\timer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

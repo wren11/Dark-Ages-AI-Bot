@@ -1,128 +1,342 @@
 #include "pch.h"
 #include "intercept_manager.h"
 #include <future>
-#include "packet_reader.h"
-#include "gamestate_manager.h"
-#include "overlay_manager.h"
-#include "packet_processor.h"
-#include "packet_registry.h"
+#include <random>
 
-intercept_manager::PFN_ORIGINAL_SEND
-	intercept_manager::TrueSendFunction = nullptr;
-intercept_manager::PFN_ORIGINAL_RECV
-	intercept_manager::TrueRecvFunction = nullptr;
+// Use the new packet system
+#include "network/packet.h"
+#include "network/packet_reader.h"
+#include "network/packet_writer.h"
+#include "network/packet_handler_registry.h"
+#include "game/network_interface.h"
+#include "game/sprite_manager.h"
+#include "utils/logging.h"
 
+// Static member initialization
+intercept_manager::PFN_ORIGINAL_SEND intercept_manager::TrueSendFunction = nullptr;
+intercept_manager::PFN_ORIGINAL_RECV intercept_manager::TrueRecvFunction = nullptr;
+std::atomic<bool> intercept_manager::hooks_applied_(false);
+std::mutex intercept_manager::hook_mutex_;
+std::future<void> intercept_manager::hook_future_ = std::future<void>();
+
+// Memory addresses for hooking
 const DWORD intercept_manager::sendPacketOutgoing = 0x00567FB0;
 const DWORD intercept_manager::recvPacketIncoming = 0x00467060;
 
+// Exception handler for safer operation
 LONG WINAPI VectoredExceptionHandler(PEXCEPTION_POINTERS pExceptionInfo)
 {
-	return EXCEPTION_CONTINUE_EXECUTION;
+    // Log the exception information with improved logging
+    utils::Logging::error("Exception caught in hook: 0x" + 
+                         utils::Logging::hexString(pExceptionInfo->ExceptionRecord->ExceptionCode) +
+                         " at address 0x" + 
+                         utils::Logging::hexString(reinterpret_cast<std::uintptr_t>(pExceptionInfo->ExceptionRecord->ExceptionAddress)));
+    return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-PacketProcessor packetProcessor;
-
-int __stdcall intercept_manager::SendFunctionStub(BYTE *data, int arg1, int arg2, char arg3)
-{
-	if (data == nullptr || arg1 < 2)
-		return 0;
-	packetProcessor.enqueueSend(std::make_shared<packet>(data, arg1));
-	return TrueSendFunction(data, arg1, arg2, arg3);
+// Helper math functions with bounds checking
+namespace {
+    // Safe random engine
+    std::mt19937& getRandomEngine() {
+        static std::mt19937 engine(static_cast<unsigned long>(std::time(nullptr)));
+        return engine;
+    }
+    
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    
+    double multiply(double a, double b) {
+        return a * b;
+    }
+    
+    double divide(double a, double b) {
+        if (std::abs(b) < 1e-10) {
+            utils::Logging::warning("Division by near-zero value");
+            return 0.0;
+        }
+        return a / b;
+    }
+    
+    std::string formatValue(double value, int precision = 4) {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(precision) << value;
+        return oss.str();
+    }
 }
 
-int __stdcall intercept_manager::RecvFunctionStub(BYTE *data, int arg1)
+int __stdcall intercept_manager::SendFunctionStub(BYTE *data, int arg1, int arg2, char arg3) noexcept
 {
-	if (data == nullptr || arg1 < 2)
-		return 0;
-	packetProcessor.enqueueRecv(std::make_shared<packet>(data, arg1));
-	return TrueRecvFunction(data, arg1);
+    try {
+        if (data == nullptr || arg1 < 2) {
+            utils::Logging::warning("SendFunctionStub: Invalid packet data or length");
+            return 0;
+        }
+        
+        // Create a network::Packet from the raw data for modern interface
+        network::Packet packet(data, static_cast<size_t>(arg1));
+        
+        // Process the packet with the PacketHandlerRegistry (outgoing = true)
+        network::PacketHandlerRegistry::getInstance().processPacket(packet, true);
+        
+        // Process with sprite manager if needed
+        if (data[0] == 0x33) {
+            game::SpriteManager::getInstance().processSpritePacket(packet);
+        }
+        
+        return TrueSendFunction(data, arg1, arg2, arg3);
+    } 
+    catch (const std::exception& e) {
+        utils::Logging::error("Exception in SendFunctionStub: " + std::string(e.what()));
+        return 0;
+    }
+    catch (...) {
+        utils::Logging::error("Unknown exception in SendFunctionStub");
+        return 0;
+    }
 }
 
-void __stdcall intercept_manager::on_packet_send(packet *packet)
+int __stdcall intercept_manager::RecvFunctionStub(BYTE *data, int arg1) noexcept
 {
-	if (packet != nullptr && packet->length >= 2)
-	{
-		packet->print_hex();
-		PacketHandlerRegistry::handle_outgoing_data(*packet);
-	}
+    try {
+        if (data == nullptr || arg1 < 2) {
+            utils::Logging::warning("RecvFunctionStub: Invalid packet data or length");
+            return 0;
+        }
+        
+        // Create a network::Packet from the raw data for modern interface
+        network::Packet packet(data, static_cast<size_t>(arg1));
+        
+        // Process the packet with the PacketHandlerRegistry (outgoing = false)
+        network::PacketHandlerRegistry::getInstance().processPacket(packet, false);
+        
+        // Process with sprite manager if needed
+        if (data[0] == 0x33 || data[0] == 0x34 || data[0] == 0x35 || data[0] == 0x36) {
+            game::SpriteManager::getInstance().processSpritePacket(packet);
+        }
+        
+        return TrueRecvFunction(data, arg1);
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Exception in RecvFunctionStub: " + std::string(e.what()));
+        return 0;
+    }
+    catch (...) {
+        utils::Logging::error("Unknown exception in RecvFunctionStub");
+        return 0;
+    }
 }
 
-void intercept_manager::on_packet_recv(packet *packet)
+void intercept_manager::on_packet_send(const network::Packet& packet)
 {
-	if (packet != nullptr && packet->length >= 2)
-	{
-		PacketHandlerRegistry::handle_incoming_data(*packet);
-	}
+    try {
+        std::uint8_t packetType = packet.size() > 0 ? packet[0] : 0;
+        utils::Logging::trace("Sending packet type: 0x" + utils::Logging::hexString(packetType) + 
+                            " (" + network::PacketHandlerRegistry::getInstance().getPacketName(packetType, true) + ")");
+        
+        // Additional packet processing can be done here
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Exception in on_packet_send: " + std::string(e.what()));
+    }
+}
+
+void intercept_manager::on_packet_recv(const network::Packet& packet)
+{
+    try {
+        std::uint8_t packetType = packet.size() > 0 ? packet[0] : 0;
+        utils::Logging::trace("Received packet type: 0x" + utils::Logging::hexString(packetType) + 
+                            " (" + network::PacketHandlerRegistry::getInstance().getPacketName(packetType, false) + ")");
+        
+        // Additional packet processing can be done here
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Exception in on_packet_recv: " + std::string(e.what()));
+    }
 }
 
 void intercept_manager::initialize_game_state()
 {
-	game_state.initialize();
-	game_state.set_player_info(
-		game_state_manager::get_username(),
-		Location(0, 0),
-		Direction::North);
-}
-
-void intercept_manager::initialize_drawing_manager()
-{
-	std::thread overlayThread([&]()
-		{
-			drawing_manager.initialize();
-			drawing_manager.run();
-		});
-	overlayThread.detach();
+    try {
+        utils::Logging::info("Initializing game state...");
+        
+        // Initialize the NetworkInterface
+        game::NetworkInterface::getInstance().initialize();
+        
+        // Initialize the SpriteManager
+        game::SpriteManager::getInstance().initialize();
+        
+        utils::Logging::info("Game state initialized successfully");
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Failed to initialize game state: " + std::string(e.what()));
+    }
 }
 
 void intercept_manager::initialize_handlers()
 {
-	PacketHandlerRegistry::register_send_handlers(0x1C, send_handle_packet_x1C);
-	PacketHandlerRegistry::register_send_handlers(0x38, send_handle_packet_x38);
-	PacketHandlerRegistry::register_send_handlers(0x10, send_handle_packet_x10);
-	PacketHandlerRegistry::register_send_handlers(0x0F, send_handle_packet_x0F);
-	PacketHandlerRegistry::register_send_handlers(0x13, send_handle_packet_x13);
-	PacketHandlerRegistry::register_send_handlers(0x06, send_handle_packet_x06);
-
-	PacketHandlerRegistry::register_recv_handlers(0x3A, recv_handle_packet_x3A);
-	PacketHandlerRegistry::register_recv_handlers(0x04, recv_handle_packet_x04);
-	PacketHandlerRegistry::register_recv_handlers(0x0B, recv_handle_packet_x0B);
-	PacketHandlerRegistry::register_recv_handlers(0x0C, recv_handle_packet_x0C);
-	PacketHandlerRegistry::register_recv_handlers(0x17, recv_handle_packet_x17);
-	PacketHandlerRegistry::register_recv_handlers(0x0E, recv_handle_packet_x0E);
-	PacketHandlerRegistry::register_recv_handlers(0x07, recv_handle_packet_x07);
-	PacketHandlerRegistry::register_recv_handlers(0x33, recv_handle_packet_x33);
-	PacketHandlerRegistry::register_recv_handlers(0x29, recv_handle_packet_x29);
-	PacketHandlerRegistry::register_recv_handlers(0x39, recv_handle_packet_x39);
-	PacketHandlerRegistry::register_recv_handlers(0x18, recv_handle_packet_x18);
-	PacketHandlerRegistry::register_recv_handlers(0x10, recv_handle_packet_x10);
-	PacketHandlerRegistry::register_recv_handlers(0x0F, recv_handle_packet_x0F);
-}
-
-void intercept_manager::initialize_assets()
-{
+    try {
+        utils::Logging::info("Initializing packet handlers...");
+        
+        // Initialize the PacketHandlerRegistry
+        network::PacketHandlerRegistry::getInstance().initialize();
+        
+        // Register additional packet names for better logging
+        auto& registry = network::PacketHandlerRegistry::getInstance();
+        
+        // Incoming packets (server to client)
+        registry.registerPacketName(0x01, "LoginResult", false);
+        registry.registerPacketName(0x02, "Redirect", false);
+        registry.registerPacketName(0x03, "CharacterList", false);
+        registry.registerPacketName(0x04, "MapChange", false);
+        registry.registerPacketName(0x0A, "HealthUpdate", false);
+        registry.registerPacketName(0x0B, "ManaUpdate", false);
+        registry.registerPacketName(0x0F, "MapData", false);
+        registry.registerPacketName(0x10, "ChatMessage", false);
+        registry.registerPacketName(0x11, "SystemMessage", false);
+        registry.registerPacketName(0x12, "WarpEffect", false);
+        registry.registerPacketName(0x1A, "CombatResult", false);
+        registry.registerPacketName(0x33, "NewSprite", false);
+        registry.registerPacketName(0x34, "SpriteUpdate", false);
+        registry.registerPacketName(0x35, "SpriteAppearance", false);
+        registry.registerPacketName(0x36, "RemoveSprite", false);
+        
+        // Outgoing packets (client to server)
+        registry.registerPacketName(0x02, "LoginRequest", true);
+        registry.registerPacketName(0x03, "SelectCharacter", true);
+        registry.registerPacketName(0x04, "CreateCharacter", true);
+        registry.registerPacketName(0x10, "ChatMessage", true);
+        registry.registerPacketName(0x11, "FaceDirection", true);
+        registry.registerPacketName(0x13, "Attack", true);
+        registry.registerPacketName(0x15, "Walk", true);
+        registry.registerPacketName(0x18, "DropGold", true);
+        registry.registerPacketName(0x19, "CastSpell", true);
+        registry.registerPacketName(0x1C, "UseItem", true);
+        registry.registerPacketName(0x1E, "ClickObject", true);
+        registry.registerPacketName(0x1F, "DropItem", true);
+        registry.registerPacketName(0x25, "EquipItem", true);
+        registry.registerPacketName(0x38, "PressF5", true);
+        registry.registerPacketName(0x3E, "UseSkill", true);
+        registry.registerPacketName(0x44, "RemoveItem", true);
+        
+        utils::Logging::info("Packet handlers initialized successfully");
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Failed to initialize handlers: " + std::string(e.what()));
+    }
 }
 
 void intercept_manager::Initialize()
 {
-	initialize_assets();
-	initialize_handlers();
-	initialize_drawing_manager();
-	initialize_game_state();
+    try {
+        // Add vectored exception handler for increased stability
+        AddVectoredExceptionHandler(1, VectoredExceptionHandler);
+        
+        // Initialize handlers and game state
+        initialize_handlers();
+        initialize_game_state();
+        
+        utils::Logging::info("Intercept manager initialized successfully");
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Failed to initialize intercept manager: " + std::string(e.what()));
+    }
 }
 
-void intercept_manager::AttachHook()
+bool intercept_manager::AttachHook()
 {
-	TrueSendFunction = reinterpret_cast<PFN_ORIGINAL_SEND>(DetourFunction(reinterpret_cast<PBYTE>(sendPacketOutgoing),
-																		  reinterpret_cast<PBYTE>(SendFunctionStub)));
+    // Use lock to ensure thread safety during hook operations
+    std::lock_guard<std::mutex> lock(hook_mutex_);
+    
+    // Prevent double attachment
+    if (hooks_applied_) {
+        utils::Logging::warning("Hooks already applied, skipping attachment");
+        return false;
+    }
+    
+    try {
+        // Handle any previous hook thread
+        if (hook_future_.valid()) {
+            hook_future_.wait();
+        }
+        
+        // Launch the hook operation asynchronously
+        hook_future_ = std::async(std::launch::async, []() {
+            try {
+                // Hook the functions
+                TrueSendFunction = reinterpret_cast<PFN_ORIGINAL_SEND>(DetourFunction(
+                    reinterpret_cast<PBYTE>(sendPacketOutgoing),
+                    reinterpret_cast<PBYTE>(SendFunctionStub)));
 
-	TrueRecvFunction = reinterpret_cast<PFN_ORIGINAL_RECV>(DetourFunction(reinterpret_cast<PBYTE>(recvPacketIncoming),
-																		  reinterpret_cast<PBYTE>(RecvFunctionStub)));
+                TrueRecvFunction = reinterpret_cast<PFN_ORIGINAL_RECV>(DetourFunction(
+                    reinterpret_cast<PBYTE>(recvPacketIncoming),
+                    reinterpret_cast<PBYTE>(RecvFunctionStub)));
+                    
+                hooks_applied_ = true;
+                utils::Logging::info("Hooks successfully applied");
+            }
+            catch (const std::exception& e) {
+                utils::Logging::error("Failed to attach hooks: " + std::string(e.what()));
+                hooks_applied_ = false;
+            }
+            catch (...) {
+                utils::Logging::error("Unknown exception while attaching hooks");
+                hooks_applied_ = false;
+            }
+        });
+        
+        return true;
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Failed to start hook thread: " + std::string(e.what()));
+        return false;
+    }
 }
 
-void intercept_manager::RemoveHook()
+bool intercept_manager::RemoveHook()
 {
-	DetourRemove(reinterpret_cast<PBYTE>(TrueSendFunction), reinterpret_cast<PBYTE>(SendFunctionStub));
-	DetourRemove(reinterpret_cast<PBYTE>(TrueRecvFunction), reinterpret_cast<PBYTE>(RecvFunctionStub));
-
-	drawing_manager.cleanup();
+    // Use lock to ensure thread safety during hook operations
+    std::lock_guard<std::mutex> lock(hook_mutex_);
+    
+    // Check if hooks are applied
+    if (!hooks_applied_) {
+        utils::Logging::warning("No hooks applied, skipping removal");
+        return false;
+    }
+    
+    try {
+        // Handle any previous hook thread
+        if (hook_future_.valid()) {
+            hook_future_.wait();
+        }
+        
+        // Launch the unhook operation asynchronously
+        hook_future_ = std::async(std::launch::async, []() {
+            try {
+                // Remove the hooks if they were applied
+                if (TrueSendFunction) {
+                    DetourRemove(reinterpret_cast<PBYTE>(TrueSendFunction), 
+                                 reinterpret_cast<PBYTE>(SendFunctionStub));
+                }
+                
+                if (TrueRecvFunction) {
+                    DetourRemove(reinterpret_cast<PBYTE>(TrueRecvFunction), 
+                                 reinterpret_cast<PBYTE>(RecvFunctionStub));
+                }
+                
+                hooks_applied_ = false;
+                utils::Logging::info("Hooks successfully removed");
+            }
+            catch (const std::exception& e) {
+                utils::Logging::error("Failed to remove hooks: " + std::string(e.what()));
+            }
+            catch (...) {
+                utils::Logging::error("Unknown exception while removing hooks");
+            }
+        });
+        
+        return true;
+    }
+    catch (const std::exception& e) {
+        utils::Logging::error("Failed to start unhook thread: " + std::string(e.what()));
+        return false;
+    }
 }

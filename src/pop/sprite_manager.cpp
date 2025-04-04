@@ -1,12 +1,15 @@
 #include "pch.h"
 #include "GameStateManager.h"
-#include "network_functions.h"
+#include "game/network_interface.h"
 #include "packet_structures.h"
 #include "obj_managers.h"
-#include "packet_reader.h"
+#include "network/packet_reader.h"
 #include "structures.h"
 #include <iostream>
 #include <exception>
+
+// Note: This file is kept for compatibility but will be replaced by game/sprite_manager.cpp
+// New code should use game::SpriteManager instead
 
 void ProcessSpritePacket(const std::vector<unsigned char> &packetData)
 {
