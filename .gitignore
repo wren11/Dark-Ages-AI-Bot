@@ -62,4 +62,3 @@ _ReSharper*/
 vcpkg_installed
 vcpkg_installed/
 vcpkg_installed/**
-.env
