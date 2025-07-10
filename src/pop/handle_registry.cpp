@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "network/packet_handler.h"
+#include "packet_handler.h"
 #include "packet_registry.h"
 #include "packet_structures.h"
 
@@ -22,6 +22,7 @@ void PacketHandlerRegistry::register_recv_handlers(
 
 void PacketHandlerRegistry::handle_outgoing_data(const packet &pkt)
 {
+
     if (pkt.length < 2)
         return;
 
@@ -33,6 +34,7 @@ void PacketHandlerRegistry::handle_outgoing_data(const packet &pkt)
 
 void PacketHandlerRegistry::handle_incoming_data(const packet &pkt)
 {
+
     if (pkt.length < 2)
         return;
 

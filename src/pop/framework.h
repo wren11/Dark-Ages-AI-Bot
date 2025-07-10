@@ -1,21 +1,25 @@
 #pragma once
-
-// Use lean and mean Windows headers
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <ddraw.h>
+#include <objidl.h>
+#include <gdiplus.h>
 
-// Detours for function hooking (essential for the bot)
 #include <detours.h>
 #pragma comment(lib, "detours.lib")
 
-// GDI+ for UI rendering if needed by the game menu
-#include <gdiplus.h>
+using namespace Gdiplus;
 #pragma comment(lib, "Gdiplus.lib")
 
-// DirectX for potential game rendering hooks
+#include <DbgHelp.h>
+#pragma comment(lib, "Dbghelp.lib")
+
 #include <d2d1.h>
 #pragma comment(lib, "d2d1.lib")
 
-// DirectWrite for text rendering in UI
 #include <dwrite.h>
+#include <wincodec.h>
 #pragma comment(lib, "dwrite.lib")
+
+#pragma comment(lib, "windowscodecs.lib")
+#include <commdlg.h>

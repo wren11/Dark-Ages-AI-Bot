@@ -1,15 +1,19 @@
 #pragma once
+#include "pch.h"
+#include "network_functions.h"
 #include <cmath>
-#include <string>
 #include <vector>
-#include <array>
 #include <algorithm>
-#include <sstream>
+#include <iostream>
+#include <string>
+#include <array>
+#include <functional>
+#include <memory>
 
-using byte = unsigned char;
-using uint16_t = unsigned short;
+using BYTE = unsigned char;
+using USHORT = unsigned short;
 
-enum class Direction : byte
+enum class Direction : BYTE
 {
     North,
     East,
@@ -18,7 +22,6 @@ enum class Direction : byte
     None
 };
 
-// Simple legend mark for player info
 struct LegendMark
 {
     byte Icon;
@@ -27,7 +30,6 @@ struct LegendMark
     std::string Mark;
 };
 
-// Player legend/bio information
 struct Legend
 {
     byte Nation;
@@ -45,6 +47,7 @@ struct Legend
     std::string formatSummary() const
     {
         std::ostringstream summary;
+
         summary << "Nation: " << static_cast<int>(Nation) << "\n";
         summary << "Guild Rank: " << GuildRank << "\n";
         summary << "Title: " << Title << "\n";
@@ -55,19 +58,25 @@ struct Legend
         summary << "Master: " << (Master ? "Yes" : "No") << "\n";
         summary << "Class: " << Class << "\n";
         summary << "Guild: " << Guild << "\n";
+        summary << "Marks Count: " << LegendMarks.size() << "\n";
+
+        for (const auto &mark : LegendMarks)
+        {
+            summary << "Mark - ID: " << mark.MarkID << ", Mark: " << mark.Mark << "\n";
+        }
+
         return summary.str();
     }
 };
 
-// Core location class for game positioning
 class Location
 {
 public:
-    uint16_t X;
-    uint16_t Y;
+    USHORT X;
+    USHORT Y;
     Direction FacingDirection;
 
-    Location(uint16_t x = 0, uint16_t y = 0, Direction facing = Direction::None) : X(x), Y(y), FacingDirection(facing) {}
+    Location(USHORT x = 0, USHORT y = 0, Direction facing = Direction::None) : X(x), Y(y), FacingDirection(facing) {}
 
     std::string directionToString(Direction direction) const
     {
@@ -88,48 +97,200 @@ public:
 
     bool isWithinFourSpacesStraight(const Location &target) const
     {
-        return (Y == target.Y && std::abs(static_cast<int>(X) - static_cast<int>(target.X)) <= 4) || 
-               (X == target.X && std::abs(static_cast<int>(Y) - static_cast<int>(target.Y)) <= 4);
+        return (Y == target.Y && std::abs(X - target.X) <= 4) || (X == target.X && std::abs(Y - target.Y) <= 4);
+    }
+
+    Location predictLocation(int steps) const
+    {
+        Location result(*this);
+        std::array<std::function<void(Location &, int)>, 4> moveFuncs = {{[](Location &loc, int s)
+                                                                          { loc.Y -= s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.Y += s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.X += s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.X -= s; }}};
+        if (static_cast<int>(FacingDirection) < moveFuncs.size())
+        {
+            moveFuncs[static_cast<int>(FacingDirection)](result, steps);
+        }
+        return result;
+    }
+
+    bool isPredictedInLineOfSight(const Location &other, int steps) const
+    {
+        Location predictedLocation = other.predictLocation(steps);
+        return isWithinFourSpacesStraight(predictedLocation);
     }
 
     Direction determineFacingDirection(const Location &target) const
     {
-        int deltaX = static_cast<int>(target.X) - static_cast<int>(X);
-        int deltaY = static_cast<int>(target.Y) - static_cast<int>(Y);
+        if (X == target.X)
+        {
+            return Y > target.Y ? Direction::North : Direction::South;
+        }
+        else if (Y == target.Y)
+        {
+            return X > target.X ? Direction::West : Direction::East;
+        }
+        return FacingDirection;
+    }
 
+    void faceAndAmbush(const Location &other, int steps)
+    {
+        if (isPredictedInLineOfSight(other, steps))
+        {
+            Location predictedLocation = other.predictLocation(steps);
+            FacingDirection = determineFacingDirection(predictedLocation);
+            // Assuming game_function::send_to_server exists and takes a unique_ptr to a BYTE array
+            auto message = std::make_unique<BYTE[]>(3);
+            message[0] = 0x11;
+            message[1] = static_cast<BYTE>(FacingDirection);
+            message[2] = 0x00;
+            game_function::send_to_server(std::move(message).get(), 3);
+            // Assuming AMBUSH is a macro or function that performs the ambush
+        }
+    }
+
+    Direction determineEscapeDirection(const Location &other, int steps) const
+    {
+        Location predictedLocation = other.predictLocation(steps);
+        int deltaX = predictedLocation.X - X;
+        int deltaY = predictedLocation.Y - Y;
         if (std::abs(deltaX) > std::abs(deltaY))
         {
-            return (deltaX > 0) ? Direction::East : Direction::West;
+            return deltaX > 0 ? Direction::West : Direction::East;
         }
-        else
+        else if (std::abs(deltaY) > std::abs(deltaX))
         {
-            return (deltaY > 0) ? Direction::South : Direction::North;
+            return deltaY > 0 ? Direction::North : Direction::South;
         }
+        return Direction::None;
     }
 
     Location move(Direction direction, int steps = 1) const
     {
-        Location newLocation(*this);
-        
+        Location result(*this);
+        std::array<std::function<void(Location &, int)>, 4> moveFuncs = {{[](Location &loc, int s)
+                                                                          { loc.Y -= s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.Y += s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.X += s; },
+                                                                          [](Location &loc, int s)
+                                                                          { loc.X -= s; }}};
+        if (static_cast<int>(direction) < moveFuncs.size())
+        {
+            moveFuncs[static_cast<int>(direction)](result, steps);
+        }
+        return result;
+    }
+
+    Direction approachWithoutLOS(const Location &target, const Location &threat, int steps)
+    {
+        Location predictedThreatLocation = threat.predictLocation(steps);
+        std::vector<Direction> possibleDirections = {Direction::North, Direction::South, Direction::East, Direction::West};
+        std::vector<Location> possibleMoves;
+        std::transform(possibleDirections.begin(), possibleDirections.end(), std::back_inserter(possibleMoves), [&](Direction d)
+                       { return this->move(d); });
+
+        possibleMoves.erase(std::remove_if(possibleMoves.begin(), possibleMoves.end(), [&](const Location &loc)
+                                           { return predictedThreatLocation.isPredictedInLineOfSight(loc, steps); }),
+                            possibleMoves.end());
+
+        auto closestMove = std::min_element(possibleMoves.begin(), possibleMoves.end(), [&](const Location &a, const Location &b)
+                                            { return Location::Distance(a, target) < Location::Distance(b, target); });
+
+        if (closestMove == possibleMoves.end())
+        {
+            return Direction::None;
+        }
+
+        if (closestMove->X > this->X)
+            return Direction::East;
+        if (closestMove->X < this->X)
+            return Direction::West;
+        if (closestMove->Y > this->Y)
+            return Direction::South;
+        if (closestMove->Y < this->Y)
+            return Direction::North;
+
+        return Direction::None;
+    }
+
+    Location canCharge() const
+    {
+        return predictLocation(5);
+    }
+
+    bool canAmbush(const Location &target) const
+    {
+        return isPredictedInLineOfSight(target, 3) && Distance(*this, target) <= 3;
+    }
+
+    std::string reachTargetWithSkills(const Location &target)
+    {
+        Location chargeLocation = canCharge();
+        bool canCharge = Distance(chargeLocation, target) < Distance(*this, target);
+
+        if (canAmbush(target))
+        {
+            return "Use Ambush to reach the target.";
+        }
+        else if (canCharge)
+        {
+            return "Use Charge to get closer to the target.";
+        }
+
+        return "Cannot reach the target with skills from the current position.";
+    }
+
+    std::string strategicMove(const Location &target, const Location &opponent)
+    {
+        Location myPredictedCharge = canCharge();
+        Location opponentPredictedCharge = opponent.canCharge();
+
+        bool canIAmbush = canAmbush(target);
+        bool opponentCanAmbushMe = opponent.canAmbush(*this);
+
+        bool safeFromCharge = !opponentPredictedCharge.isPredictedInLineOfSight(*this, 5);
+        bool safeFromAmbush = !opponentCanAmbushMe;
+
+        if (canIAmbush && safeFromCharge && safeFromAmbush)
+        {
+            return "Ambush to reach the target safely, avoiding the opponent's LOS, charge, and ambush.";
+        }
+        else if (Distance(myPredictedCharge, target) < Distance(*this, target) && safeFromCharge && safeFromAmbush)
+        {
+            return "Charge to get closer to the target safely, ensuring we're out of the opponent's LOS and safe from their ambush.";
+        }
+
+        Direction moveDirection = determineEscapeDirection(opponent, 1);
+        if (moveDirection != Direction::None && safeFromAmbush)
+        {
+            return "Move " + directionToString(moveDirection) + " to safely approach the target, staying vigilant of the opponent's potential actions.";
+        }
+
+        return "Stay put to carefully avoid the opponent's LOS, charge, and ambush. Wait for a more advantageous position or for the opponent to make a move.";
+    }
+
+    bool isInFront(const Location &target, Direction direction) const
+    {
         switch (direction)
         {
-            case Direction::North:
-                newLocation.Y = static_cast<uint16_t>(std::max(0, static_cast<int>(Y) - steps));
-                break;
-            case Direction::South:
-                newLocation.Y = static_cast<uint16_t>(Y + steps);
-                break;
-            case Direction::East:
-                newLocation.X = static_cast<uint16_t>(X + steps);
-                break;
-            case Direction::West:
-                newLocation.X = static_cast<uint16_t>(std::max(0, static_cast<int>(X) - steps));
-                break;
-            default:
-                break;
+        case Direction::North:
+            return target.Y < Y;
+        case Direction::South:
+            return target.Y > Y;
+        case Direction::East:
+            return target.X > X;
+        case Direction::West:
+            return target.X < X;
+        case Direction::None:
+            break;
+        default:
+            return false;
         }
-        
-        newLocation.FacingDirection = direction;
-        return newLocation;
     }
 };

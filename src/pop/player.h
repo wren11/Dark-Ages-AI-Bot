@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "structures.h"
+#include "animations.h"
 
 struct Player
 {
